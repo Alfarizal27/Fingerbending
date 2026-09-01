@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Real-Time Sensor Flex - Arduino</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; color: #1e293b; padding: 20px; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    header { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+    .title-area h1 { font-size: 22px; color: #0f172a; }
+    .title-area p { font-size: 13px; color: #64748b; margin-top: 4px; }
+    .btn-group { display: flex; gap: 10px; }
+    button { font-family: inherit; font-size: 14px; font-weight: 600; padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.2s ease; }
+    .btn-connect { background-color: #2563eb; color: white; }
+    .btn-connect:hover { background-color: #1d4ed8; }
+    .btn-disconnect { background-color: #dc2626; color: white; }
+    .btn-export { background-color: #059669; color: white; }
+    .btn-clear { background-color: #64748b; color: white; }
+
+    .grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+    .card { background: white; padding: 18px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; text-align: center; }
+    .card .label { font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+    .card .value { font-size: 30px; font-weight: 700; color: #0f172a; margin-top: 8px; }
+    .card .unit { font-size: 12px; color: #94a3b8; }
+
+    .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .status-disconnected { background-color: #fee2e2; color: #991b1b; }
+    .status-connected { background-color: #dcfce7; color: #166534; }
+
+    .chart-container { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="title-area">
+      <h1>📊 Dashboard Real-Time Sensor Flex</h1>
+      <p>Visualisasi Pembacaan Sensor per Waktu (Baud Rate 9600)</p>
+    </div>
+    <div class="btn-group">
+      <button id="btnConnect" class="btn-connect" onclick="toggleConnect()">🔌 Hubungkan Arduino</button>
+      <button id="btnExport" class="btn-export" onclick="exportCSV()" disabled>📥 Unduh CSV</button>
+      <button id="btnClear" class="btn-clear" onclick="clearData()">🗑️ Reset</button>
+    </div>
+  </header>
+
+  <div class="grid-stats">
+    <div class="card">
+      <div class="label">Status Koneksi</div>
+      <div style="margin-top:12px;"><span id="statusBadge" class="status-badge status-disconnected">Terputus</span></div>
+    </div>
+    <div class="card">
+      <div class="label">Nilai ADC (A0)</div>
+      <div class="value" id="valRaw">0</div>
+      <div class="unit">720 (Lurus) - 630 (90°)</div>
+    </div>
+    <div class="card">
+      <div class="label">Estimasi Tekukan</div>
+      <div class="value" id="valFlex">0%</div>
+      <div class="unit" id="valStatus">Kondisi Lurus</div>
+    </div>
+    <div class="card">
+      <div class="label">Output LED PWM</div>
+      <div class="value" id="valPWM">0</div>
+      <div class="unit">Kecerahan (0 - 255)</div>
+    </div>
+  </div>
+
+  <div class="chart-container">
+    <h3>Grafik Nilai ADC vs Waktu</h3>
+    <canvas id="flexChart" height="110"></canvas>
+  </div>
+</div>
+
+<script>
+  let port = null, reader = null, keepReading = false;
+  let recordedData = [];
+
+  const btnConnect = document.getElementById('btnConnect');
+  const btnExport = document.getElementById('btnExport');
+  const statusBadge = document.getElementById('statusBadge');
+  const valRawEl = document.getElementById('valRaw');
+  const valFlexEl = document.getElementById('valFlex');
+  const valStatusEl = document.getElementById('valStatus');
+  const valPWMEl = document.getElementById('valPWM');
+
+  const ctx = document.getElementById('flexChart').getContext('2d');
+  const flexChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Nilai Analog Sensor (A0)',
+        data: [],
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37, 99, 235, 0.08)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.2
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      scales: {
+        x: { title: { display: true, text: 'Waktu' } },
+        y: { title: { display: true, text: 'Nilai ADC (A0)' }, suggestedMin: 550, suggestedMax: 800 }
+      }
+    }
+  });
+
+  async function toggleConnect() {
+    if (port) { await disconnectSerial(); } else { await connectSerial(); }
+  }
+
+  async function connectSerial() {
+    try {
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 9600 });
+      keepReading = true;
+      btnConnect.textContent = "❌ Putuskan Koneksi";
+      btnConnect.className = "btn-disconnect";
+      statusBadge.textContent = "Terhubung (COM Port)";
+      statusBadge.className = "status-badge status-connected";
+      btnExport.disabled = false;
+      readSerialData();
+    } catch (err) {
+      alert("Gagal koneksi: " + err.message);
+    }
+  }
+
+  async function readSerialData() {
+    const textDecoder = new TextDecoderStream();
+    port.readable.pipeTo(textDecoder.writable);
+    const readerStream = textDecoder.readable.getReader();
+    reader = readerStream;
+    let buffer = '';
+
+    while (keepReading) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) {
+        buffer += value;
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (line.trim() !== "") processData(line.trim());
+        }
+      }
+    }
+  }
+
+  function processData(rawDataStr) {
+    const rawVal = parseInt(rawDataStr);
+    if (isNaN(rawVal)) return;
+
+    const timeStr = new Date().toLocaleTimeString();
+
+    // Kalkulasi persen tekukan berdasarkan kode kamu (720 -> 630)
+    let flexPercent = Math.round(((720 - rawVal) / (720 - 630)) * 100);
+    flexPercent = Math.max(0, Math.min(100, flexPercent));
+
+    let pwmVal = Math.round(((720 - rawVal) / (720 - 630)) * 255);
+    pwmVal = Math.max(0, Math.min(255, pwmVal));
+
+    let statusTxt = flexPercent > 75 ? "Tekukan Penuh (~90°)" : flexPercent > 35 ? "Tekukan Sedang" : "Kondisi Lurus (0°)";
+
+    valRawEl.textContent = rawVal;
+    valFlexEl.textContent = flexPercent + "%";
+    valStatusEl.textContent = statusTxt;
+    valPWMEl.textContent = pwmVal;
+
+    recordedData.push({ waktu: timeStr, adc: rawVal, flex: flexPercent, pwm: pwmVal });
+
+    flexChart.data.labels.push(timeStr);
+    flexChart.data.datasets[0].data.push(rawVal);
+    if (flexChart.data.labels.length > 50) {
+      flexChart.data.labels.shift();
+      flexChart.data.datasets[0].data.shift();
+    }
+    flexChart.update();
+  }
+
+  async function disconnectSerial() {
+    keepReading = false;
+    if (reader) await reader.cancel();
+    if (port) { await port.close(); port = null; }
+    btnConnect.textContent = "🔌 Hubungkan Arduino";
+    btnConnect.className = "btn-connect";
+    statusBadge.textContent = "Terputus";
+    statusBadge.className = "status-badge status-disconnected";
+  }
+
+  function clearData() {
+    recordedData = [];
+    flexChart.data.labels = [];
+    flexChart.data.datasets[0].data = [];
+    flexChart.update();
+  }
+
+  function exportCSV() {
+    let csv = "data:text/csv;charset=utf-8,Waktu,Nilai_ADC,Tekukan_Persen,PWM_LED\n";
+    recordedData.forEach(r => { csv += `${r.waktu},${r.adc},${r.flex},${r.pwm}\n`; });
+    const link = document.createElement("a");
+    link.href = encodeURI(csv);
+    link.download = `data_sensor_flex.csv`;
+    link.click();
+  }
+</script>
+</body>
+</html>
