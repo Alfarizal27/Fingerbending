@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Sensor Flex - History & Save Chart</title>
+  
+  <!-- CSS Internal & CDN -->
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- App Script (defer agar dipanggil setelah DOM selesai load) -->
+  <script src="assets/js/app.js" defer></script>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="title-area">
+      <h1>📊 Dashboard Sensor Flex & History Log</h1>
+      <p>Kalibrasi: <strong>630</strong> (Lurus 0°) | <strong>730</strong> (Ditekuk 90°)</p>
+    </div>
+    <div class="btn-group">
+      <button id="btnConnect" class="btn-connect" onclick="toggleConnect()">🔌 Hubungkan Arduino</button>
+      <button id="btnSaveImg" class="btn-save-img" onclick="saveChartImage()">🖼️ Simpan Grafik (PNG)</button>
+      <button id="btnExport" class="btn-export" onclick="exportCSV()" disabled>📥 Unduh CSV</button>
+      <button id="btnClear" class="btn-clear" onclick="clearData()">🗑️ Reset</button>
+    </div>
+  </header>
+
+  <div class="grid-stats">
+    <div class="card">
+      <div class="label">Status Port</div>
+      <div style="margin-top:10px;"><span id="statusBadge" class="status-badge status-disconnected">Terputus</span></div>
+    </div>
+    <div class="card">
+      <div class="label">Nilai ADC A0</div>
+      <div class="value" id="valRaw">630</div>
+      <div class="unit">Rentang: 630 - 730</div>
+    </div>
+    <div class="card">
+      <div class="label">Tekukan (%)</div>
+      <div class="value" id="valFlex">0%</div>
+      <div class="unit" id="valStatus">Lurus (0°)</div>
+    </div>
+    <div class="card">
+      <div class="label">Total History Data</div>
+      <div class="value" id="valCount">0</div>
+      <div class="unit">Sampel Terekam</div>
+    </div>
+  </div>
+
+  <div class="chart-container">
+    <div class="chart-header">
+      <h3>📈 Grafik Real-Time Nilai Sensor vs Waktu</h3>
+      <div class="view-control">
+        <label for="historyLimit">Tampilan Grafik:</label>
+        <select id="historyLimit" onchange="updateChartDisplay()">
+          <option value="50">50 Data Terakhir</option>
+          <option value="100">100 Data Terakhir</option>
+          <option value="all" selected>Tampilkan Semua History</option>
+        </select>
+      </div>
+    </div>
+    <canvas id="flexChart" height="110"></canvas>
+  </div>
+
+  <div class="history-container">
+    <h3>📜 Tabel Riwayat Pembacaan (History Log)</h3>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>No</th>
+            <th>Waktu</th>
+            <th>Nilai Raw ADC</th>
+            <th>Tekukan (%)</th>
+            <th>Status Tekukan</th>
+            <th>Output PWM</th>
+          </tr>
+        </thead>
+        <tbody id="historyTableBody">
+          <tr><td colspan="6" style="text-align:center; color:#94a3b8;">Belum ada data masuk...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
