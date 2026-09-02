@@ -1,13 +1,14 @@
-let port = null, reader = null, keepReading = false;
-let isLogging = false; // 🚩 FLAG BARU: Mencegah data di-plot sebelum tombol 'Mulai' dipencet
+// assets/js/app.js - Murni Logika UI & Data Processing
+let isLogging = false;
 let allHistoryData = [];
 
 const MAX_TABLE_ROWS = 50; 
-const CALIB_STRAIGHT = 690;
-const CALIB_BENT = 790;
+const CALIB_STRAIGHT = 630;
+const CALIB_BENT = 730;
 
+// DOM Elements
 const btnConnect = document.getElementById('btnConnect');
-const btnStart = document.getElementById('btnStart'); // DOM Tombol Mulai
+const btnStart = document.getElementById('btnStart');
 const btnExport = document.getElementById('btnExport');
 const baudRateSelect = document.getElementById('baudRateSelect');
 const statusBadge = document.getElementById('statusBadge');
@@ -17,15 +18,7 @@ const valStatusEl = document.getElementById('valStatus');
 const valCountEl = document.getElementById('valCount');
 const historyTableBody = document.getElementById('historyTableBody');
 
-if ('serial' in navigator) {
-  navigator.serial.addEventListener('disconnect', (event) => {
-    if (port && event.target === port) {
-      disconnectSerial();
-      alert("⚠️ Koneksi terputus! Kabel Serial USB terlepas mendadak.");
-    }
-  });
-}
-
+// Chart Initialization
 const ctx = document.getElementById('flexChart').getContext('2d');
 const flexChart = new Chart(ctx, {
   type: 'line',
@@ -49,23 +42,32 @@ const flexChart = new Chart(ctx, {
       x: { title: { display: true, text: 'Waktu' } },
       y: { 
         title: { display: true, text: 'Nilai ADC (A0)' },
-        suggestedMin: 600,
-        suggestedMax: 820
+        suggestedMin: 300,
+        suggestedMax: 900
       }
     }
   }
 });
 
+// Instance Driver Telemetri
+const telemetryDriver = new SerialDriver(
+  (rawData) => { if (isLogging) processData(rawData); },
+  (isConnected) => updateConnectionUI(isConnected)
+);
+
 async function toggleConnect() {
-  if (port) { await disconnectSerial(); } else { await connectSerial(); }
+  if (telemetryDriver.port) {
+    await telemetryDriver.disconnect();
+  } else {
+    const selectedBaud = parseInt(baudRateSelect.value) || 9600;
+    await telemetryDriver.connect(selectedBaud);
+  }
 }
 
-// ⏯️ FUNGSI BARU: TOGGLE START / PAUSE STREAMING DATA
 function toggleLogging() {
-  if (!port) return;
+  if (!telemetryDriver.port) return;
 
   isLogging = !isLogging;
-
   if (isLogging) {
     btnStart.textContent = "⏸️ Jeda Stream";
     btnStart.className = "btn-pause";
@@ -75,56 +77,30 @@ function toggleLogging() {
   }
 }
 
-async function connectSerial() {
-  try {
-    const selectedBaud = parseInt(baudRateSelect.value) || 9600;
-
-    port = await navigator.serial.requestPort();
-    await port.open({ baudRate: selectedBaud });
-    keepReading = true;
-
+function updateConnectionUI(isConnected) {
+  if (isConnected) {
     baudRateSelect.disabled = true;
     btnConnect.textContent = "❌ Putuskan Koneksi";
     btnConnect.className = "btn-disconnect";
     statusBadge.textContent = "Terhubung";
     statusBadge.className = "status-badge status-connected";
-    
-    // AKTIFKAN TOMBOL MULAI SETELAH PORT TERHUBUNG
     btnStart.disabled = false;
     btnStart.textContent = "▶️ Mulai Stream";
     btnStart.className = "btn-start";
-
-    readSerialData();
-  } catch (err) {
-    alert("Gagal menghubungkan ke Serial Port: " + err.message);
-  }
-}
-
-async function readSerialData() {
-  const textDecoder = new TextDecoderStream();
-  port.readable.pipeTo(textDecoder.writable);
-  const readerStream = textDecoder.readable.getReader();
-  reader = readerStream;
-  let buffer = '';
-
-  while (keepReading) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    if (value) {
-      buffer += value;
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-      for (const line of lines) {
-        if (line.trim() !== "") processData(line.trim());
-      }
-    }
+  } else {
+    baudRateSelect.disabled = false;
+    btnConnect.textContent = "🔌 Hubungkan Arduino";
+    btnConnect.className = "btn-connect";
+    statusBadge.textContent = "Terputus";
+    statusBadge.className = "status-badge status-disconnected";
+    btnStart.disabled = true;
+    btnStart.textContent = "▶️ Mulai Stream";
+    btnStart.className = "btn-start";
+    isLogging = false;
   }
 }
 
 function processData(rawDataStr) {
-  // ⛔ CEK DULU: KALAU BELUM DIPENCET 'MULAI', ABAIKAN DATA MASUK
-  if (!isLogging) return;
-
   const rawVal = parseInt(rawDataStr);
   if (isNaN(rawVal)) return;
 
@@ -204,26 +180,6 @@ function saveChartImage() {
   document.body.removeChild(link);
 }
 
-async function disconnectSerial() {
-  keepReading = false;
-  isLogging = false; // Reset status logging
-  
-  if (reader) await reader.cancel();
-  if (port) { await port.close(); port = null; }
-  
-  baudRateSelect.disabled = false;
-  btnConnect.textContent = "🔌 Hubungkan Arduino";
-  btnConnect.className = "btn-connect";
-
-  // RESET TOMBOL START
-  btnStart.disabled = true;
-  btnStart.textContent = "▶️ Mulai Stream";
-  btnStart.className = "btn-start";
-
-  statusBadge.textContent = "Terputus";
-  statusBadge.className = "status-badge status-disconnected";
-}
-
 function clearData() {
   if (confirm("Apakah Anda yakin ingin menghapus seluruh history data?")) {
     allHistoryData = [];
@@ -231,7 +187,7 @@ function clearData() {
     flexChart.data.datasets[0].data = [];
     flexChart.update();
     historyTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">Belum ada data masuk...</td></tr>';
-    valRawEl.textContent = "690";
+    valRawEl.textContent = CALIB_STRAIGHT;
     valFlexEl.textContent = "0%";
     valCountEl.textContent = "0";
     valStatusEl.textContent = "Lurus (0°)";
@@ -248,3 +204,11 @@ function exportCSV() {
   link.download = `history_sensor_flex_${new Date().toISOString().slice(0,10)}.csv`;
   link.click();
 }
+
+// Global scope attachment
+window.toggleLogging = toggleLogging;
+window.toggleConnect = toggleConnect;
+window.clearData = clearData;
+window.exportCSV = exportCSV;
+window.saveChartImage = saveChartImage;
+window.updateChartDisplay = updateChartDisplay;
