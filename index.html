@@ -5,11 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard Sensor Flex - History & Save Chart</title>
   
-  <!-- CSS Internal & CDN -->
   <link rel="stylesheet" href="assets/css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  
-  <!-- App Script (defer agar dipanggil setelah DOM selesai load) -->
   <script src="assets/js/app.js" defer></script>
 </head>
 <body>
@@ -19,12 +16,6 @@
     <div class="title-area">
       <h1>📊 Dashboard Sensor Flex & History Log</h1>
       <p>Kalibrasi: <strong>630</strong> (Lurus 0°) | <strong>730</strong> (Ditekuk 90°)</p>
-    </div>
-    <div class="btn-group">
-      <button id="btnConnect" class="btn-connect" onclick="toggleConnect()">🔌 Hubungkan Arduino</button>
-      <button id="btnSaveImg" class="btn-save-img" onclick="saveChartImage()">🖼️ Simpan Grafik (PNG)</button>
-      <button id="btnExport" class="btn-export" onclick="exportCSV()" disabled>📥 Unduh CSV</button>
-      <button id="btnClear" class="btn-clear" onclick="clearData()">🗑️ Reset</button>
     </div>
   </header>
 
@@ -63,6 +54,14 @@
       </div>
     </div>
     <canvas id="flexChart" height="110"></canvas>
+  </div>
+
+  <!-- TOMBOL KONTROL DIPINDAH KE SINI (DI BAWAH GRAFIK) -->
+  <div class="btn-group action-bar">
+    <button id="btnConnect" class="btn-connect" onclick="toggleConnect()">🔌 Hubungkan Arduino</button>
+    <button id="btnSaveImg" class="btn-save-img" onclick="saveChartImage()">🖼️ Simpan Grafik (PNG)</button>
+    <button id="btnExport" class="btn-export" onclick="exportCSV()" disabled>📥 Unduh CSV</button>
+    <button id="btnClear" class="btn-clear" onclick="clearData()">🗑️ Reset</button>
   </div>
 
   <div class="history-container">
