@@ -57,7 +57,14 @@
   </div>
 
   <!-- TOMBOL KONTROL DIPINDAH KE SINI (DI BAWAH GRAFIK) -->
+  <!-- ACTION BAR DENGAN SELECTOR BAUD RATE DINAMIS -->
   <div class="btn-group action-bar">
+    <select id="baudRateSelect" class="select-baud">
+      <option value="9600" selected>9600 Baud</option>
+      <option value="19200">19200 Baud</option>
+      <option value="57600">57600 Baud</option>
+      <option value="115200">115200 Baud</option>
+    </select>
     <button id="btnConnect" class="btn-connect" onclick="toggleConnect()">🔌 Hubungkan Arduino</button>
     <button id="btnSaveImg" class="btn-save-img" onclick="saveChartImage()">🖼️ Simpan Grafik (PNG)</button>
     <button id="btnExport" class="btn-export" onclick="exportCSV()" disabled>📥 Unduh CSV</button>
