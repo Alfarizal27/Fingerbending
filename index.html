@@ -66,6 +66,8 @@
       <option value="115200">115200 Baud</option>
     </select>
     <button id="btnConnect" class="btn-connect" onclick="toggleConnect()">🔌 Hubungkan Arduino</button>
+    <!-- TOMBOL MULAI/JEDA STREAMING DATA -->
+    <button id="btnStart" class="btn-start" onclick="toggleLogging()" disabled>▶️ Mulai Stream</button>
     <button id="btnSaveImg" class="btn-save-img" onclick="saveChartImage()">🖼️ Simpan Grafik (PNG)</button>
     <button id="btnExport" class="btn-export" onclick="exportCSV()" disabled>📥 Unduh CSV</button>
     <button id="btnClear" class="btn-clear" onclick="clearData()">🗑️ Reset</button>
