@@ -1,18 +1,32 @@
 let port = null, reader = null, keepReading = false;
 let allHistoryData = [];
 
-// Kalibrasi Riil User: 630 (Lurus) -> 730 (Ditekuk 90°)
-const CALIB_STRAIGHT = 630;
-const CALIB_BENT = 730;
+// Batas maksimum baris di DOM HTML (Mencegah browser lag/crash)
+const MAX_TABLE_ROWS = 50; 
+
+// Kalibrasi Riil User: 690 (Lurus) -> 790 (Ditekuk 90°)
+const CALIB_STRAIGHT = 690;
+const CALIB_BENT = 790;
 
 const btnConnect = document.getElementById('btnConnect');
 const btnExport = document.getElementById('btnExport');
+const baudRateSelect = document.getElementById('baudRateSelect');
 const statusBadge = document.getElementById('statusBadge');
 const valRawEl = document.getElementById('valRaw');
 const valFlexEl = document.getElementById('valFlex');
 const valStatusEl = document.getElementById('valStatus');
 const valCountEl = document.getElementById('valCount');
 const historyTableBody = document.getElementById('historyTableBody');
+
+// 🔌 HANDLING KABEL USB CABUT MENDADAK (UNPLUG EVENT)
+if ('serial' in navigator) {
+  navigator.serial.addEventListener('disconnect', (event) => {
+    if (port && event.target === port) {
+      disconnectSerial();
+      alert("⚠️ Koneksi terputus! Kabel Serial USB terlepas mendadak.");
+    }
+  });
+}
 
 const ctx = document.getElementById('flexChart').getContext('2d');
 const flexChart = new Chart(ctx, {
@@ -38,7 +52,7 @@ const flexChart = new Chart(ctx, {
       y: { 
         title: { display: true, text: 'Nilai ADC (A0)' },
         suggestedMin: 600,
-        suggestedMax: 760
+        suggestedMax: 820
       }
     }
   }
@@ -50,14 +64,20 @@ async function toggleConnect() {
 
 async function connectSerial() {
   try {
+    // 🎛️ BACA VALUE BAUD RATE DINAMIS DARI SELECTOR UI
+    const selectedBaud = parseInt(baudRateSelect.value) || 9600;
+
     port = await navigator.serial.requestPort();
-    await port.open({ baudRate: 9600 });
+    await port.open({ baudRate: selectedBaud });
     keepReading = true;
+
+    baudRateSelect.disabled = true; // Kunci dropdown saat terhubung
     btnConnect.textContent = "❌ Putuskan Koneksi";
     btnConnect.className = "btn-disconnect";
     statusBadge.textContent = "Terhubung";
     statusBadge.className = "status-badge status-connected";
     btnExport.disabled = false;
+
     readSerialData();
   } catch (err) {
     alert("Gagal menghubungkan ke Serial Port: " + err.message);
@@ -111,11 +131,34 @@ function processData(rawDataStr) {
     status: statusTxt,
     pwm: pwmVal
   };
+  
+  // Array utuh tetap menyimpan seluruh data untuk export CSV
   allHistoryData.push(dataRow);
   valCountEl.textContent = allHistoryData.length;
 
   updateHistoryTable(dataRow);
   updateChartDisplay();
+}
+
+// 🛡️ DOM TABLE LIMITER (MAX 50 BARIS DI TAMPILAN WEB)
+function updateHistoryTable(newRow) {
+  if (allHistoryData.length === 1) historyTableBody.innerHTML = '';
+  
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><b>${newRow.no}</b></td>
+    <td>${newRow.waktu}</td>
+    <td>${newRow.adc}</td>
+    <td>${newRow.flex}%</td>
+    <td>${newRow.status}</td>
+    <td>${newRow.pwm}</td>
+  `;
+  historyTableBody.insertBefore(tr, historyTableBody.firstChild);
+
+  // Jika baris di HTML melebihi batas MAX_TABLE_ROWS, hapus baris terlama dari DOM
+  while (historyTableBody.children.length > MAX_TABLE_ROWS) {
+    historyTableBody.removeChild(historyTableBody.lastChild);
+  }
 }
 
 function updateChartDisplay() {
@@ -132,25 +175,8 @@ function updateChartDisplay() {
   flexChart.update();
 }
 
-function updateHistoryTable(newRow) {
-  if (allHistoryData.length === 1) historyTableBody.innerHTML = '';
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td><b>${newRow.no}</b></td>
-    <td>${newRow.waktu}</td>
-    <td>${newRow.adc}</td>
-    <td>${newRow.flex}%</td>
-    <td>${newRow.status}</td>
-    <td>${newRow.pwm}</td>
-  `;
-  historyTableBody.insertBefore(tr, historyTableBody.firstChild);
-}
-
 function saveChartImage() {
-  if (allHistoryData.length === 0) {
-    alert("Belum ada data pada grafik untuk disimpan!");
-    return;
-  }
+  if (allHistoryData.length === 0) return alert("Belum ada data!");
   const canvas = document.getElementById('flexChart');
   const imageURI = canvas.toDataURL('image/png');
   const link = document.createElement('a');
@@ -165,6 +191,8 @@ async function disconnectSerial() {
   keepReading = false;
   if (reader) await reader.cancel();
   if (port) { await port.close(); port = null; }
+  
+  baudRateSelect.disabled = false; // Buka kembali kunci selector baud rate
   btnConnect.textContent = "🔌 Hubungkan Arduino";
   btnConnect.className = "btn-connect";
   statusBadge.textContent = "Terputus";
@@ -178,7 +206,7 @@ function clearData() {
     flexChart.data.datasets[0].data = [];
     flexChart.update();
     historyTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">Belum ada data masuk...</td></tr>';
-    valRawEl.textContent = "630";
+    valRawEl.textContent = "690";
     valFlexEl.textContent = "0%";
     valCountEl.textContent = "0";
     valStatusEl.textContent = "Lurus (0°)";
