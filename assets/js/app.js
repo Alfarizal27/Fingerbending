@@ -1,14 +1,13 @@
 let port = null, reader = null, keepReading = false;
+let isLogging = false; // 🚩 FLAG BARU: Mencegah data di-plot sebelum tombol 'Mulai' dipencet
 let allHistoryData = [];
 
-// Batas maksimum baris di DOM HTML (Mencegah browser lag/crash)
 const MAX_TABLE_ROWS = 50; 
-
-// Kalibrasi Riil User: 690 (Lurus) -> 790 (Ditekuk 90°)
 const CALIB_STRAIGHT = 690;
 const CALIB_BENT = 790;
 
 const btnConnect = document.getElementById('btnConnect');
+const btnStart = document.getElementById('btnStart'); // DOM Tombol Mulai
 const btnExport = document.getElementById('btnExport');
 const baudRateSelect = document.getElementById('baudRateSelect');
 const statusBadge = document.getElementById('statusBadge');
@@ -18,7 +17,6 @@ const valStatusEl = document.getElementById('valStatus');
 const valCountEl = document.getElementById('valCount');
 const historyTableBody = document.getElementById('historyTableBody');
 
-// 🔌 HANDLING KABEL USB CABUT MENDADAK (UNPLUG EVENT)
 if ('serial' in navigator) {
   navigator.serial.addEventListener('disconnect', (event) => {
     if (port && event.target === port) {
@@ -62,21 +60,39 @@ async function toggleConnect() {
   if (port) { await disconnectSerial(); } else { await connectSerial(); }
 }
 
+// ⏯️ FUNGSI BARU: TOGGLE START / PAUSE STREAMING DATA
+function toggleLogging() {
+  if (!port) return;
+
+  isLogging = !isLogging;
+
+  if (isLogging) {
+    btnStart.textContent = "⏸️ Jeda Stream";
+    btnStart.className = "btn-pause";
+  } else {
+    btnStart.textContent = "▶️ Mulai Stream";
+    btnStart.className = "btn-start";
+  }
+}
+
 async function connectSerial() {
   try {
-    // 🎛️ BACA VALUE BAUD RATE DINAMIS DARI SELECTOR UI
     const selectedBaud = parseInt(baudRateSelect.value) || 9600;
 
     port = await navigator.serial.requestPort();
     await port.open({ baudRate: selectedBaud });
     keepReading = true;
 
-    baudRateSelect.disabled = true; // Kunci dropdown saat terhubung
+    baudRateSelect.disabled = true;
     btnConnect.textContent = "❌ Putuskan Koneksi";
     btnConnect.className = "btn-disconnect";
     statusBadge.textContent = "Terhubung";
     statusBadge.className = "status-badge status-connected";
-    btnExport.disabled = false;
+    
+    // AKTIFKAN TOMBOL MULAI SETELAH PORT TERHUBUNG
+    btnStart.disabled = false;
+    btnStart.textContent = "▶️ Mulai Stream";
+    btnStart.className = "btn-start";
 
     readSerialData();
   } catch (err) {
@@ -106,6 +122,9 @@ async function readSerialData() {
 }
 
 function processData(rawDataStr) {
+  // ⛔ CEK DULU: KALAU BELUM DIPENCET 'MULAI', ABAIKAN DATA MASUK
+  if (!isLogging) return;
+
   const rawVal = parseInt(rawDataStr);
   if (isNaN(rawVal)) return;
 
@@ -132,15 +151,14 @@ function processData(rawDataStr) {
     pwm: pwmVal
   };
   
-  // Array utuh tetap menyimpan seluruh data untuk export CSV
   allHistoryData.push(dataRow);
   valCountEl.textContent = allHistoryData.length;
+  btnExport.disabled = false;
 
   updateHistoryTable(dataRow);
   updateChartDisplay();
 }
 
-// 🛡️ DOM TABLE LIMITER (MAX 50 BARIS DI TAMPILAN WEB)
 function updateHistoryTable(newRow) {
   if (allHistoryData.length === 1) historyTableBody.innerHTML = '';
   
@@ -155,7 +173,6 @@ function updateHistoryTable(newRow) {
   `;
   historyTableBody.insertBefore(tr, historyTableBody.firstChild);
 
-  // Jika baris di HTML melebihi batas MAX_TABLE_ROWS, hapus baris terlama dari DOM
   while (historyTableBody.children.length > MAX_TABLE_ROWS) {
     historyTableBody.removeChild(historyTableBody.lastChild);
   }
@@ -189,12 +206,20 @@ function saveChartImage() {
 
 async function disconnectSerial() {
   keepReading = false;
+  isLogging = false; // Reset status logging
+  
   if (reader) await reader.cancel();
   if (port) { await port.close(); port = null; }
   
-  baudRateSelect.disabled = false; // Buka kembali kunci selector baud rate
+  baudRateSelect.disabled = false;
   btnConnect.textContent = "🔌 Hubungkan Arduino";
   btnConnect.className = "btn-connect";
+
+  // RESET TOMBOL START
+  btnStart.disabled = true;
+  btnStart.textContent = "▶️ Mulai Stream";
+  btnStart.className = "btn-start";
+
   statusBadge.textContent = "Terputus";
   statusBadge.className = "status-badge status-disconnected";
 }
@@ -210,6 +235,7 @@ function clearData() {
     valFlexEl.textContent = "0%";
     valCountEl.textContent = "0";
     valStatusEl.textContent = "Lurus (0°)";
+    btnExport.disabled = true;
   }
 }
 
